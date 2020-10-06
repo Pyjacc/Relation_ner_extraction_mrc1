@@ -1,6 +1,10 @@
+'''
+实体抽取
+'''
+
 import os
 import numpy as np
-from bert4keras.backend import keras,K
+from bert4keras.backend import keras,K      # bert4keras版本为0.8.3
 from bert4keras.models import build_transformer_model
 from bert4keras.tokenizers import Tokenizer
 from bert4keras.optimizers import Adam
@@ -20,7 +24,7 @@ ELECTRA_CONFIG_PATH = "./pre_train/electra/chinese_electra_small_L-12_H-256_A-4/
 ELECTRA_CHECKPOINT_PATH = "./pre_train/electra/chinese_electra_small_L-12_H-256_A-4/electra_small"
 ELECTRA_VOCAB_PATH = "./pre_train/electra/chinese_electra_small_L-12_H-256_A-4/vocab.txt"
 
-#该类主要解决在识别一些英文和数字的时候，尽量按照一个个字符处理
+#该类主要解决在识别一些英文和数字的时候，尽量按照一个一个字符处理
 class OurTokenizer(Tokenizer):
     def _tokenize(self, text):
         R = []
@@ -49,10 +53,10 @@ def load_data(filename):
     with open(filename,encoding='utf-8') as f:
         lines = f.readlines()
     for l in lines:
-        if not l:
+        if not l:   # l为空
             continue
         l = l.strip()
-        l = l.split('jjjjj')
+        l = l.split('jjjj')
         query = l[0]
         text = l[1]
         start_idx = l[2].split(' ')
@@ -76,7 +80,7 @@ class data_generator(DataGenerator):
             token_ids = query_token_ids.copy()
             start = query_segment_ids.copy()
             end = query_segment_ids.copy()
-            w_token_ids = tokenizer.encode(text)[0][1:-1]
+            w_token_ids = tokenizer.encode(text)[0][1:-1]   # 第一个位置为开始标记符，所以从1开始取
             text_len = len(w_token_ids)
             if len(token_ids) + len(w_token_ids) < maxlen:
                 token_ids += w_token_ids
@@ -93,10 +97,10 @@ class data_generator(DataGenerator):
                 end += end_tmp
             else:
                 continue
-            token_ids += [tokenizer._token_end_id]
+            token_ids += [tokenizer._token_end_id]  # 加上结束标记
             segment_ids = query_segment_ids + [1] * (len(token_ids) - len(query_segment_ids))
-            start += [0]
-            end += [0]
+            start += [0]    # [0]对应结束标记符
+            end += [0]      # [0]对应结束标记符
             batch_token_ids.append(token_ids)
             batch_segment_ids.append(segment_ids)
             batch_start.append(to_categorical(start,2))
@@ -107,7 +111,7 @@ class data_generator(DataGenerator):
                 batch_start = sequence_padding(batch_start)
                 batch_end = sequence_padding(batch_end)
                 yield [batch_token_ids,batch_segment_ids,batch_start,batch_end],None
-                batch_token_ids,batch_segment_ids,batch_start,batch_end = [],[],[],[]
+                batch_token_ids,batch_segment_ids,batch_start,batch_end = [],[],[],[]       # 清空
 
 bert_model = build_transformer_model(
     config_path=ELECTRA_CONFIG_PATH,
@@ -152,22 +156,25 @@ model.compile(optimizer=Adam(learning_rate))
 
 
 def extract(qtext):
-    v = qtext.split('jjjjj')[0]
+    v = qtext.split('jjjjj')[0]     # query
     text = qtext.split('jjjjj')[1]
 
     query_tokens,query_segment_ids = tokenizer.encode(v)
     token_ids = query_tokens.copy()
-    token_ids_w = tokenizer.encode(text)[0][1:-1]
+    token_ids_w = tokenizer.encode(text)[0][1:-1]   # 第一个为开始标识符，所以索引从1开始取
     token_ids += token_ids_w
-    token_ids += [tokenizer._token_end_id]
+    token_ids += [tokenizer._token_end_id]      # 结束符
+    # len(token_ids)：总长度。 len(query_tokens)：query的长度
     segment_ids = query_segment_ids + [1] * (len(token_ids) - len(query_tokens))
 
+    # [len(query_segment_ids):-1]：从query开始取到最后
     start_out = start_model.predict([[token_ids],[segment_ids]])[0][len(query_segment_ids):-1]
     end_out = end_model.predict([[token_ids],[segment_ids]])[0][len(query_segment_ids):-1]
 
-    start = np.argmax(start_out,axis=1)
+    start = np.argmax(start_out,axis=1)     # 通过取argmax进行降维（2维降为1维）
     end = np.argmax(end_out,axis=1)
 
+    # 将start和end合并到一起（2条轨道合并为1条轨道）
     res = [int(k) + int(v) if int(k) + int(v) < 2 else 1 for k,v in zip(start,end)]
     return res
 
@@ -178,6 +185,7 @@ class Evaluate(keras.callbacks.Callback):
         super().__init__()
         self.best_val_f1 = 0
         self.val = val
+
     def evaluate(self):
         X, Y, Z = 1e-10, 1e-10, 1e-10
         for (query,text,start_idx,end_idx) in tqdm(self.val):
@@ -189,6 +197,7 @@ class Evaluate(keras.callbacks.Callback):
                 end[int(e)] = 1
             q_text = query + 'jjjjj' + text
             R = extract(q_text)
+            # T：true label
             T = [int(k) + int(v) if int(k) + int(v) < 2 else 1 for k,v in zip(start,end)]
             assert len(R) == len(T)
             R_and_T = 0
@@ -208,7 +217,7 @@ class Evaluate(keras.callbacks.Callback):
 
         if f1 >= self.best_val_f1:
             self.best_val_f1 = f1
-            model.save_weights('./models/ner/best_model.weights')
+            model.save_weights(model_path)
         print(
             'valid: f1: %.4f, precision: %.4f, recall: %.4f, best f1: %.5f\n' % (f1,precision,recall,self.best_val_f1)
         )
@@ -257,6 +266,7 @@ if __name__ == "__main__":
     #     epochs=epochs,
     #     callbacks=[evaluator]
     # )
+
     query = "根据药物治疗关系，找出药物"
     res = "。jjjjj0 6jjjjj2 10"
     text = "帕金森病@抗胆碱药（例如苯海索）和金刚烷胺在治疗轻度症状（尤其是震颤）时也可能有效，但是抗胆碱能药物的不良反应常限制了其在老年患者中的使用。"
