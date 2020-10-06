@@ -1,0 +1,4 @@
+.idea
+*.iml
+.venv/*
+pre_train
