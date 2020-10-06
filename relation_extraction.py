@@ -119,17 +119,58 @@ def f1_np(y_true, y_pred):
     return micro_f1, macro_f1
 
 
+# 第十五次课完成的部分
 def evaluate(data):
-    pass
+    mi = []
+    ma = []
+    # 检索验证集
+    for (text, labels) in data:
+        labels = labels.split(" ")
+        labels_true = [0] * num_classes
+        for k in labels:
+            labels_true[int(k)] = 1
 
+        token_ids, segment_ids = tokenizer.encode(text)
+        res = model.predict([[token_ids], [segment_ids]])[0]        # 预测
+        res = res.reshape((len(res), 1))
+        res = list(np.where(res > 0.55)[0]) # 0.55自定义的阈值
+
+        label_pred = [0] * num_classes
+        for r in res:
+            label_pred[int(r)] = 1
+
+        label_pred = np.array(label_pred)
+        labels_true = np.array(labels_true)
+
+        micro_f1, macro_f1 = f1_np(labels_true, label_pred)
+        mi.append(micro_f1)
+        ma.append(macro_f1)
+
+    mi = sum(mi) / len(mi)
+    ma = sum(ma) / len(ma)
+    return mi, ma
 
 
 class Evaluator(keras.callbacks.Callback):
-    pass
+    def __init__(self):
+        self.macro_f1 = 0.
 
+    # 每个epoch跑完后调用此方法
+    def on_epoch_end(self, epoch, logs=None):
+        micro_f1, macro_f1 = evaluate(valid_data)
+        if macro_f1 > self.macro_f1:
+            self.macro_f1 = macro_f1
+            model.save_weights("./models/best_model.weights")       # 保存模型
+            print(micro_f1, macro_f1)
 
+# 预测
 def predict_re(text):
-    pass
+    model.load_weights("./models/best_model.weights")           # 加载模型
+    token_ids, segment_ids = tokenizer.encode(text)
+    res = model.predict([[token_ids], [segment_ids]])[0]        # 预测结果
+    res = res.reshape((len(res), 1))
+    res = list(np.where(res > 0.55)[0])
+    return res
 
 
 if __name__ == "__main__":
@@ -143,7 +184,7 @@ if __name__ == "__main__":
     )
 
 
-    #test
+    #test（预测效果不好）
     text = '产后抑郁症@### 睡眠剥夺 研究提示婴儿睡眠模式与产妇疲劳以及产后新发抑郁症状间存在强关联性。'
     res = predict_re(text)
     print(res)
