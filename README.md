@@ -12,3 +12,4 @@
 ### 6. 说明：
 #### 1）工程基于pt20200816
 #### 2）完整模型训练参考工程pt20200809
+#### 3）pre_train模型下载链接：https://pan.baidu.com/s/1hz8wBcx-qUqAblORKdjHYQ 提取码：bmyx 
